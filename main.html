@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<meta name="viewport" content="width=device-width">
+</head>
+</body>
+	<title>Monaco Editor Playground</title>
+		<section class="try">
+				<div class="container">
+
+
+		<h3>Editor</h3>
+					<div class="editor row">
+						<div class="span3">
+							
+							<p>Colorizers are implemented using <a href="monarch.html"
+								target="_blank">Monarch</a>.</p>
+						</div>
+						<div class="span9">
+							<div class="row">
+								<div class="span4">
+									<label class="control-label">Language</label>
+									<select class="language-picker"></select>
+								</div>
+								<div class="span4">
+									<label class="control-label">Theme</label>
+									<select class="theme-picker">
+										<option>Visual Studio</option>
+										<option>Visual Studio Dark</option>
+										<option>High Contrast Dark</option>
+									</select>
+								</div>
+							</div>
+							<div class="editor-frame">
+								<div class="loading editor" style="display: none;">
+									<div class="progress progress-striped active">
+										<div class="bar"></div>
+									</div>
+								</div>
+								<div id="editor"></div>
+							</div>
+						</div>
+					</div>
+		   
+		   </div>
+		   <iframe height="400px" width="100%" src="https://repl.it/@GuillermoAlvez/ServidorWebPIS?lite=true" scrolling="no" frameborder="no" allowtransparency="true" allowfullscreen="true" sandbox="allow-forms allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-modals"></iframe>
+		   </section>
+   
+<link rel="stylesheet "type="text/css" href="https://microsoft.github.io/monaco-editor/lib/bootstrap-cosmo.css">
+<link rel="stylesheet" href="https://microsoft.github.io/monaco-editor/lib/bootstrap-responsive.min.css">
+<link rel="stylesheet" href="https://microsoft.github.io/monaco-editor/all.css">
+<link rel="stylesheet" href="https://microsoft.github.io/monaco-editor/index/index.css">
+<link rel="stylesheet" href="https://microsoft.github.io/monaco-editor/node_modules/monaco-editor/min/vs/editor/editor.main.css">
+
+<script src="https://microsoft.github.io/monaco-editor/lib/jquery-1.9.1.min.js"></script>
+<script src="https://microsoft.github.io/monaco-editor/lib/bootstrap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.12.2/js/bootstrap-select.min.js"></script>
+<script src="https://microsoft.github.io/monaco-editor/node_modules/monaco-editor/min/vs/loader.js"></script>
+<script  src="require.js"></script>
+   <script >
+   'use strict';
+require.config({
+    baseUrl: 'https://microsoft.github.io/monaco-editor/node_modules/monaco-editor/min/'
+    });
+
+
+var editor = null, diffEditor = null;
+
+$(document).ready(function() {
+	require(['vs/editor/editor.main'], function () {
+		var MODES = (function() {
+			var modesIds = monaco.languages.getLanguages().map(function(lang) { return lang.id; });
+			modesIds.sort();
+
+			return modesIds.map(function(modeId) {
+				return {
+					modeId: modeId,
+					sampleURL: 'https://microsoft.github.io/monaco-editor/index/samples/sample.' + modeId + '.txt'
+				};
+			});
+		})();
+
+		for (var i = 0; i < MODES.length; i++) {
+			var o = document.createElement('option');
+			o.textContent = MODES[i].modeId;
+			$(".language-picker").append(o);
+		}
+		$(".language-picker").change(function() {
+			loadSample(MODES[this.selectedIndex]);
+		});
+		$('.language-picker').selectpicker({
+			size: 10
+		});
+		loadSample(MODES[0]);
+
+		$(".theme-picker").change(function() {
+			changeTheme(this.selectedIndex);
+		});
+		$('.theme-picker').selectpicker({
+			size: 3
+		});
+
+		loadDiffSample();
+
+		$('#inline-diff-checkbox').change(function () {
+			diffEditor.updateOptions({
+				renderSideBySide: !$(this).is(':checked')
+			});
+		});
+	});
+
+	window.onresize = function () {
+		if (editor) {
+			editor.layout();
+		}
+		if (diffEditor) {
+			diffEditor.layout();
+		}
+	};
+});
+
+function loadSample(mode) {
+	$.ajax({
+		type: 'GET',
+		url: mode.sampleURL,
+		dataType: 'text',
+		beforeSend: function() {
+			$('.loading.editor').show();
+		},
+		error: function () {
+			if (editor) {
+				if (editor.getModel()) {
+					editor.getModel().dispose();
+				}
+				editor.dispose();
+				editor = null;
+			}
+			$('.loading.editor').fadeOut({ duration: 200 });
+			$('#editor').empty();
+			$('#editor').append('<p class="alert alert-error">Failed to load ' + mode.modeId + ' sample</p>');
+		}
+	}).done(function (data) {
+		if (!editor) {
+			$('#editor').empty();
+			editor = monaco.editor.create(document.getElementById('editor'), {
+				model: null,
+			});
+		}
+
+		var oldModel = editor.getModel();
+		var newModel = monaco.editor.createModel(data, mode.modeId);
+		editor.setModel(newModel);
+		if (oldModel) {
+			oldModel.dispose();
+		}
+		$('.loading.editor').fadeOut({ duration: 300 });
+	});
+}
+
+function loadDiffSample() {
+
+	var onError = function() {
+		$('.loading.diff-editor').fadeOut({ duration: 200 });
+		$('#diff-editor').append('<p class="alert alert-error">Failed to load diff editor sample</p>');
+	};
+
+	$('.loading.diff-editor').show();
+
+	var lhsData = null, rhsData = null, jsMode = null;
+
+	$.ajax({
+		type: 'GET',
+		url: 'https://microsoft.github.io/monaco-editor/index/samples/diff.lhs.txt',
+		dataType: 'text',
+		error: onError
+	}).done(function (data) {
+		lhsData = data;
+		onProgress();
+	});
+
+	$.ajax({
+		type: 'GET',
+		url: 'https://microsoft.github.io/monaco-editor/index/samples/diff.rhs.txt',
+		dataType: 'text',
+		error: onError
+	}).done(function (data) {
+		rhsData = data;
+		onProgress();
+	});
+
+	function onProgress() {
+		if (lhsData && rhsData) {
+			diffEditor = monaco.editor.createDiffEditor(document.getElementById('diff-editor'), {
+				enableSplitViewResizing: false
+			});
+
+			var lhsModel = monaco.editor.createModel(lhsData, 'text/javascript');
+			var rhsModel = monaco.editor.createModel(rhsData, 'text/javascript');
+
+			diffEditor.setModel({
+				original: lhsModel,
+				modified: rhsModel
+			});
+
+			$('.loading.diff-editor').fadeOut({ duration: 300 });
+		}
+	}
+}
+
+function changeTheme(theme) {
+	var newTheme = (theme === 1 ? 'vs-dark' : ( theme === 0 ? 'vs' : 'hc-black' ));
+	if (editor) {
+		editor.updateOptions({ 'theme' : newTheme });
+	}
+	if (diffEditor) {
+		diffEditor.updateOptions({ 'theme': newTheme });
+	}
+}
+
+   </script>
+   
+   
+</body>
+</html>
